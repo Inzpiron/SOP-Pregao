@@ -30,9 +30,7 @@ struct argumentos_struct {
     int qtdthreads;
     int tamnomeArq;
     char nomeArq[TAMNOMEMAX];
-    LDDE *vendedor; 
-
-
+   
 };
 
 //Criar lista
@@ -102,6 +100,7 @@ void destroi(LDDE **pp)
     free(*pp);
     (*pp) = NULL;
 }
+LDDE *vendedor; 
 
 void *corretor(void *argumentos){
 	LDDE *lista = NULL; 
@@ -135,6 +134,33 @@ void *corretor(void *argumentos){
         threadsOcupadas = threadsOcupadas-1;
         
         //local de verificar ofertas de vendas e realizar a compra
+
+        //Codigo apenas para testes
+        NoLDDE *aux;
+        while(1){
+        	//Se o vendedor não é nulo, então tem alguma coisa a venda
+        	if(vendedor->lista!= NULL){
+        		//aux aponta para lista do vendedor
+        		aux = vendedor->lista;
+        		//enquanto ter coisas a venda
+        		 while(aux->prox!=NULL) {
+            		//copia o que tem dentro de um bloco da lista
+            		memcpy(reg, aux->dados, vendedor->tamInfo);
+            		//testa se é maior que 0
+            		if(reg->quantidade > 0){
+            			printf("pode comprar\n");
+            			//consome tudo(apenas para testar)
+            			reg->quantidade = 0;
+            			//depois de atualizar a quantidade copia para a lista
+            			memcpy(aux->dados, reg, vendedor->tamInfo);
+            		}
+            		aux = aux->prox;
+        		}
+        		
+        		
+        	}
+    	}
+      
         
        
 	   
@@ -149,15 +175,14 @@ void *corretor(void *argumentos){
 }
 	 
 
-
  
 int main(int argc, char** argv)
 {
 	int qtdthreads; //Quantidade de threads
-	pthread_t cor;
+	
 	struct argumentos_struct args;
 	int i;
-	
+	vendedor = NULL;
 	
 
 
@@ -165,7 +190,7 @@ int main(int argc, char** argv)
     qtdthreads = atoi(argv[1]); 
     int tamArq = strlen(argv[2]);
     threadsOcupadas = qtdthreads;
-
+    pthread_t cor[qtdthreads];
 	
 	for(i=0; i<tamArq; i++){
 		
@@ -177,14 +202,12 @@ int main(int argc, char** argv)
 	//Inicializa struct
 	args.tamnomeArq = tamArq;
 	args.qtdthreads = qtdthreads;
-	args.vendedor = NULL;
+
 
 	//Cria threads corretores
 	for(i = 0; i<qtdthreads; i++){
 		args.qtdthreads = qtdthreads-i;
-		 pthread_create(&cor, NULL, corretor, (void *)&args);
-     	 pthread_join(cor, NULL);
-     	 
+		 pthread_create(&cor[i], NULL, corretor, (void *)&args); 
 
 	}
 	char nomeArq[args.tamnomeArq+1]; //Nome do arquivo
@@ -192,7 +215,7 @@ int main(int argc, char** argv)
 	//Abre o arquivo para vendas
 	snprintf(nomeArq, sizeof(nomeArq), "%s", args.nomeArq);
 	ptr = fopen(nomeArq,"r");
-	if( cria(&args.vendedor, sizeof(info)) == 1) {     
+	if( cria(&vendedor, sizeof(info)) == 1) {     
         printf("lista para vendas criada\n");
         info *reg, x;
         reg = &x;
@@ -203,7 +226,7 @@ int main(int argc, char** argv)
         		if(reg->nome[0] == '#'){
         			printf("dorme\n");
         		}else{
-        			insereNoFim(args.vendedor,reg);
+        			insereNoFim(vendedor,reg);
         			printf("inseriu\n");
         		}
 				//printf("%s %d\n", reg->nome, reg->quantidade);
@@ -216,15 +239,17 @@ int main(int argc, char** argv)
        
 	   
    
-    destroi(&args.vendedor);
+   
     }else{
     	printf("errro ao criar lista\n");
     }
-	if(ptr){
+	for(i = 0; i<qtdthreads; i++){
 		
-	}	
-    
+		 pthread_join(cor[i], NULL);
 
- 
+     	 
+
+	}
+	destroi(&vendedor);
     return 0;
 }
