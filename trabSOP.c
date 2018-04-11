@@ -2,10 +2,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
+#include <time.h>
 
 #define TAMNOMEMAX 100
 
 int threadsOcupadas;
+
 
 //Estrutura da lista
 typedef struct noLDDE {
@@ -102,8 +104,64 @@ void destroi(LDDE **pp)
 }
 LDDE *vendedor; 
 
+/*
+    buscaOfertaCompra
+    Funcao que realiza compras
+    Tem como entrada 
+    - ponteiro da lista de ofertas do comprador
+    - nome do produto que esta a venda
+    - quantidade disponivel para venda
+
+*/
+
+int buscaOfertaCompra(LDDE *p, char nome[], int quantDispVendedor){
+    NoLDDE *aux;
+    aux = p->lista;
+    info *reg, x;
+    reg = &x;
+    int quantidadeComprada;
+    //Percorre lista comprador
+    while(aux->prox!=NULL) {
+        //obtem cada oferta do comprador
+        memcpy(reg, aux->dados, p->tamInfo);
+        //se quantidade é zero então o comprador está satisfeito
+        if(reg->quantidade == 0){
+            //printf("satifeito\n");
+            return 0;
+        }
+        //Compara o nome do produto da lista do vendedor com o nome da lista
+        // do comprador
+        if(memcmp(reg->nome,nome,sizeof(reg->nome))){
+            //Se iguais quer dizer que o comprador quer comprar algo com aquele nome
+            printf("encontrado\n");
+            //Se o vendedor tem uma quantidade maior que o comprador deseja
+            //o comprador compra todas daquele produto
+            if(quantDispVendedor >= reg->quantidade){
+                //comprador fica satisfeito em relação aquele produto
+                quantidadeComprada = reg->quantidade;
+                reg->quantidade = 0;
+                //registra na lista do vendedor o valor atualizado
+                memcpy(aux->dados, reg, p->tamInfo);
+                //retorna a quatidade comprada
+                return quantidadeComprada;
+
+            }else{
+                //Se o vendedor tem menos que o comprador precisa 
+                reg->quantidade = reg->quantidade - quantDispVendedor;
+                memcpy(aux->dados, reg, p->tamInfo);
+                quantidadeComprada = quantDispVendedor;
+                return quantidadeComprada;
+            }
+            
+        }
+        aux = aux->prox;
+    }
+  return 0;  
+}
+
 void *corretor(void *argumentos){
-	LDDE *lista = NULL; 
+	LDDE *lista = NULL;
+    int quantidadeComprada; 
 	struct argumentos_struct *args = (struct argumentos_struct *)argumentos;
 	char nomeArq[args->tamnomeArq+100];
 	//Concatena nome do arquivo com o id do corretor
@@ -111,7 +169,7 @@ void *corretor(void *argumentos){
 	FILE *ptr;
 	//Abre o arquivo correspondente do corretor
 	ptr = fopen(nomeArq,"r");
-
+    
 	//Cria lista de ofertas
 	if( cria(&lista, sizeof(info)) == 1) {     
         printf("lista criada\n");
@@ -147,10 +205,14 @@ void *corretor(void *argumentos){
             		//copia o que tem dentro de um bloco da lista
             		memcpy(reg, aux->dados, vendedor->tamInfo);
             		//testa se é maior que 0
+                    
             		if(reg->quantidade > 0){
-            			printf("pode comprar\n");
-            			//consome tudo(apenas para testar)
-            			reg->quantidade = 0;
+                       
+                        quantidadeComprada = buscaOfertaCompra(lista,reg->nome, reg->quantidade);
+            			//printf("pode comprar\n");
+            			
+                        reg->quantidade = reg->quantidade-quantidadeComprada;
+            			
             			//depois de atualizar a quantidade copia para a lista
             			memcpy(aux->dados, reg, vendedor->tamInfo);
             		}
@@ -210,6 +272,7 @@ int main(int argc, char** argv)
 		 pthread_create(&cor[i], NULL, corretor, (void *)&args); 
 
 	}
+    
 	char nomeArq[args.tamnomeArq+1]; //Nome do arquivo
 	FILE *ptr;
 	//Abre o arquivo para vendas
@@ -242,6 +305,23 @@ int main(int argc, char** argv)
    
     }else{
     	printf("errro ao criar lista\n");
+    }
+    NoLDDE *aux;
+    info *reg, x;
+    reg = &x;
+    sleep(10);
+  
+    if(vendedor->lista!= NULL){
+        
+        aux = vendedor->lista;
+         while(aux->prox!=NULL) {
+            
+            memcpy(reg, aux->dados, vendedor->tamInfo);
+           
+            printf("%s%d\n", reg->nome,reg->quantidade);
+            aux = aux->prox;
+        }
+
     }
 	for(i = 0; i<qtdthreads; i++){
 		
