@@ -7,6 +7,7 @@
 #include <string.h>
 #include "source/lista.h"
 
+#define MIN(a,b) ((a) < (b) ? a : b)
 #define TAMNOMEMAX 100
 
 int threadsOcupadas;
@@ -100,44 +101,66 @@ int buscaOfertaCompra(LDDE *p, char nome[], int quantDispVendedor){
   return 0;
 }
 
+
+int quantidadeCompra(NoLDDE * ptrVendedor, NoLDDE * ptrOferta) {
+    int qtdVenda  = quantidadeNode(ptrVendedor);
+    int qtdCompra = quantidadeNode(ptrOferta);
+
+    return MIN(qtdVenda, qtdCompra);
+}
+
+
 void *corretor(void *argumentos){
-	LDDE *listaOfertas = listaCriar(sizeof(info));
+	LDDE * listaOfertas = listaCriar(sizeof(info));
     int quantidadeComprada;
 	argThread * args = (argThread *) argumentos;
 
 	if(listaOfertas != NULL) {
         //Leitura do arquivo do corretor
         info *reg = (info *) malloc(sizeof(reg));
+
         FILE *ptr = fopen(args->nomeArq, "r");
         if(ptr){
         	while((fscanf(ptr,"%s %d\n", reg->nome, &reg->quantidade)) != EOF)
 				listaInserir(listaOfertas, reg);
         	fclose(ptr);
         }
-
         //local de disputa pela variavel thread ocupadas
         pthread_mutex_lock(&lock);
         threadsOcupadas = threadsOcupadas-1;
-        printf("Corretor %s leu arquivo\n\n", args->nomeArq);
+        printf("Corretor %s leu arquivo\n", args->nomeArq);
         NoLDDE * temp = listaOfertas->inicioLista;
         pthread_mutex_unlock(&lock);
+
         //local de verificar ofertas de vendas e realizar a compra
         //Codigo apenas para testes
-        NoLDDE *ptrVendedor = vendedor->inicioLista;
-        while(1){
-            if(ptrVendedor != NULL) {
-                NoLDDE * temp = listaOfertas->inicioLista;
+        NoLDDE *ptrOferta;
 
-                while(temp != NULL) {
-                    if(strcmp(nomeNode(ptrVendedor), nomeNode(temp)) == 0){
-                        if(quantidadeNode(ptrVendedor) > 0) {
-                            pthread_mutex_lock(&lock);
+        while(1){
+            NoLDDE *ptrVendedor = vendedor->inicioLista;
+            sleep(1);
+            if(ptrVendedor != NULL) {
+                ptrOferta = listaOfertas->inicioLista;
+
+                while(ptrOferta != NULL) {
+                    if(strcmp(nomeNode(ptrVendedor), nomeNode(ptrOferta)) == 0) {
+                        pthread_mutex_lock(&lock);
+                        if(quantidadeNode(ptrVendedor) > 0 && quantidadeNode(ptrOferta) > 0) {
+                            int qtdCompra = quantidadeCompra(ptrVendedor, ptrOferta);
                             printf("Em %s\n", args->nomeArq);
-                            printf("    Tentando comprar %s\n\n", nomeNode(ptrVendedor));
-                            pthread_mutex_unlock(&lock);
+                            printf("---Comprando %d de %s\n", qtdCompra, nomeNode(ptrVendedor));
+                            (*(info *)ptrVendedor->dados).quantidade -= qtdCompra;
+                            (*(info *)ptrOferta->dados).quantidade   -= qtdCompra;
+                            printf("%d %d\n\n", (*(info *)ptrVendedor->dados).quantidade, (*(info *)ptrOferta->dados).quantidade);
+
+                            if((*(info *)ptrVendedor->dados).quantidade == 0) {
+                                ptrVendedor = ptrVendedor->prox;
+                                //ptrVendedor = vendedor->inicioLista;
+                            }
                         }
+                        pthread_mutex_unlock(&lock);
                     }
-                    temp = temp->prox;
+                    ptrOferta = ptrOferta->prox;
                 }
                 ptrVendedor = ptrVendedor->prox;
             }
@@ -155,6 +178,8 @@ void *corretor(void *argumentos){
 int main(int argc, char** argv) {
 	int qtdThreads; //Quantidade de threads
 	int i;
+    vendedor = listaCriar(sizeof(info));
+
     if(pthread_mutex_init(&lock, NULL) != 0) {
         fprintf(stderr, "Erro na criação do Mutex, amigo se chegou aqui você é um campeão");
         exit(EXIT_FAILURE);
@@ -173,9 +198,15 @@ int main(int argc, char** argv) {
 		pthread_create(&threadCorretor[i], NULL, corretor, (void *) args);
     }
 
+    while(1) {
+        if(threadsOcupadas == 0)
+            break;
+    }
+
+    printf("Todos os arquivos foram lidos\n\n");
+
     char * arquivoCorretor = argv[2];
 	FILE * ptr = fopen("prgA","r");
-    vendedor = listaCriar(sizeof(info));
 	if(vendedor != NULL) {
         //printf("lista para vendas criada\n");
         //Percorre o arquivo
@@ -188,12 +219,9 @@ int main(int argc, char** argv) {
         		if(reg->nome[0] == '#'){
         			//printf("dorme\n");
         		}else{
-                    //printf("Main\n Inseriu: %s %d\n\n", reg->nome, reg->quantidade);
                     listaInserir(vendedor, reg);
-                    printf("Inserindo: %s %d\n\n", nomeNode(vendedor->fimLista), quantidadeNode(vendedor->fimLista));
-                    //usleep(1000);
-                    //printf("%s %d", reg->nome, *reg->quantidade);
-        			//printf("inseriu\n");
+                    printf("Inserindo: %s %d\n", nomeNode(vendedor->fimLista), quantidadeNode(vendedor->fimLista));
+                    sleep(1);
         		}
         	}
         	fclose(ptr);
