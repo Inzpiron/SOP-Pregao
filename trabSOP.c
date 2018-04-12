@@ -3,120 +3,62 @@
 #include <string.h>
 #include <pthread.h>
 #include <time.h>
+#include <unistd.h>
+#include <string.h>
+#include "source/lista.h"
 
 #define TAMNOMEMAX 100
 
 int threadsOcupadas;
+pthread_mutex_t lock;
 
-
-//Estrutura da lista
-typedef struct noLDDE {
-    void *dados;
-    struct noLDDE *prox;
-    struct noLDDE *ant;
-} NoLDDE;
-
-typedef struct LDDE { 
-    int tamInfo;
-    NoLDDE *lista;
-} LDDE;
-
-//Estrutura da oferta de compra e venda 
-typedef struct { 
-    int quantidade;
-    char nome[30];	
+//Estrutura da oferta de compra e venda
+typedef struct {
+    int  quantidade;
+    char nome[30];
 } info;
 
 //Estrutura dos argumentos passados aos corretores
 struct argumentos_struct {
-    int qtdthreads;
-    int tamnomeArq;
-    char nomeArq[TAMNOMEMAX];
-   
+    int  * nroThread;
+    char * nomeArq;
 };
+typedef struct argumentos_struct argThread;
+argThread * newArgThread(int nroThread, char * nomeArq) {
+    argThread * aux;
+    aux = (argThread *) malloc(sizeof(argThread));
+    aux -> nroThread  = (int *) malloc(sizeof(int));
+    *(aux -> nroThread)  = nroThread;
 
-//Criar lista
-int cria(LDDE **pp, int tamInfo)
-{   
-    int ret = 0;
-    LDDE *desc = (LDDE*) malloc(sizeof(LDDE));
-
-    if( !desc ) {
-        ret = 0;
-    }
-    else {	
-        desc->lista = NULL;
-        desc->tamInfo = tamInfo;
-        ret = 1;
-    }
-
-    (*pp) = desc;
-
-    return ret;
-}
-int insereNoFim(LDDE *p, void *novo)
-{ 	
-    NoLDDE *temp, *aux;
-    int ret = 0;
-
-    if( (temp = (NoLDDE*) malloc(sizeof(NoLDDE))) != NULL ) {
-        if((temp->dados = (void*) malloc(p->tamInfo)) != NULL ) {
-            memcpy(temp->dados, novo, p->tamInfo);
-            temp->prox = NULL;
-            if(p->lista == NULL) {	
-                p->lista = temp;
-                temp->ant = NULL;
-            }
-            else {	
-                aux = p->lista;
-                while(aux->prox != NULL)
-                    aux = aux->prox;
-                aux->prox = temp;
-                temp->ant = aux;
-            }
-            ret = 1;
-        }
-        else {
-            free(temp);
-        }
-    }
-
-    return ret;
+    aux -> nomeArq    = malloc(sizeof(char) * strlen(nomeArq));
+    memcpy(aux->nomeArq, nomeArq, sizeof(char) * strlen(nomeArq));
+    return aux;
 }
 
-int buscaNoInicio(LDDE *p, void *reg)
-{  
-    int ret = 0;
-
-    if(p->lista != NULL) { 	
-        memcpy(reg, p->lista->dados, p->tamInfo);
-        ret = 1;
-    }
-
-    return ret;
-}
-
-void destroi(LDDE **pp)
-{
-    
-    free(*pp);
-    (*pp) = NULL;
-}
-LDDE *vendedor; 
+char * nomeArquivo;
+LDDE * vendedor;
 
 /*
     buscaOfertaCompra
     Funcao que realiza compras
-    Tem como entrada 
+    Tem como entrada
     - ponteiro da lista de ofertas do comprador
     - nome do produto que esta a venda
     - quantidade disponivel para venda
 
 */
 
+int quantidadeNode(NoLDDE * tmpNo) {
+    return (*(info *)tmpNo->dados).quantidade;
+}
+
+char * nomeNode(NoLDDE * tmpNo) {
+    return (*(info *)tmpNo->dados).nome;
+}
+
 int buscaOfertaCompra(LDDE *p, char nome[], int quantDispVendedor){
     NoLDDE *aux;
-    aux = p->lista;
+    aux = p->inicioLista;
     info *reg, x;
     reg = &x;
     int quantidadeComprada;
@@ -144,192 +86,124 @@ int buscaOfertaCompra(LDDE *p, char nome[], int quantDispVendedor){
                 memcpy(aux->dados, reg, p->tamInfo);
                 //retorna a quatidade comprada
                 return quantidadeComprada;
-
             }else{
-                //Se o vendedor tem menos que o comprador precisa 
+                //Se o vendedor tem menos que o comprador precisa
                 reg->quantidade = reg->quantidade - quantDispVendedor;
                 memcpy(aux->dados, reg, p->tamInfo);
                 quantidadeComprada = quantDispVendedor;
                 return quantidadeComprada;
             }
-            
+
         }
         aux = aux->prox;
     }
-  return 0;  
+  return 0;
 }
 
 void *corretor(void *argumentos){
-	LDDE *lista = NULL;
-    int quantidadeComprada; 
-	struct argumentos_struct *args = (struct argumentos_struct *)argumentos;
-	char nomeArq[args->tamnomeArq+100];
-	//Concatena nome do arquivo com o id do corretor
-	snprintf(nomeArq, sizeof(nomeArq), "%s-%d", args->nomeArq, args->qtdthreads);
-	FILE *ptr;
-	//Abre o arquivo correspondente do corretor
-	ptr = fopen(nomeArq,"r");
-    
-	//Cria lista de ofertas
-	if( cria(&lista, sizeof(info)) == 1) {     
-        printf("lista criada\n");
-        info *reg, x;
-        reg = &x;
-        //Percorre o arquivo
-        if(ptr){
-        	printf("corretor abriu\n");
-        	while( (fscanf(ptr,"%s %d\n", reg->nome, &reg->quantidade))!=EOF ){
+	LDDE *listaOfertas = listaCriar(sizeof(info));
+    int quantidadeComprada;
+	argThread * args = (argThread *) argumentos;
 
-				//printf("%s %d\n", reg->nome, reg->quantidade);
-				//Insere na lista cada oferta
-				insereNoFim(lista,reg);
-        	}
-        
+	if(listaOfertas != NULL) {
+        //Leitura do arquivo do corretor
+        info *reg = (info *) malloc(sizeof(reg));
+        FILE *ptr = fopen(args->nomeArq, "r");
+        if(ptr){
+        	while((fscanf(ptr,"%s %d\n", reg->nome, &reg->quantidade)) != EOF)
+				listaInserir(listaOfertas, reg);
         	fclose(ptr);
         }
 
         //local de disputa pela variavel thread ocupadas
+        pthread_mutex_lock(&lock);
         threadsOcupadas = threadsOcupadas-1;
-        
+        printf("Corretor %s leu arquivo\n\n", args->nomeArq);
+        NoLDDE * temp = listaOfertas->inicioLista;
+        pthread_mutex_unlock(&lock);
         //local de verificar ofertas de vendas e realizar a compra
-
         //Codigo apenas para testes
-        NoLDDE *aux;
+        NoLDDE *ptrVendedor = vendedor->inicioLista;
         while(1){
-        	//Se o vendedor não é nulo, então tem alguma coisa a venda
-        	if(vendedor->lista!= NULL){
-        		//aux aponta para lista do vendedor
-        		aux = vendedor->lista;
-        		//enquanto ter coisas a venda
-        		 while(aux->prox!=NULL) {
-            		//copia o que tem dentro de um bloco da lista
-            		memcpy(reg, aux->dados, vendedor->tamInfo);
-            		//testa se é maior que 0
-                    
-            		if(reg->quantidade > 0){
-                       
-                        quantidadeComprada = buscaOfertaCompra(lista,reg->nome, reg->quantidade);
-            			//printf("pode comprar\n");
-            			
-                        reg->quantidade = reg->quantidade-quantidadeComprada;
-            			
-            			//depois de atualizar a quantidade copia para a lista
-            			memcpy(aux->dados, reg, vendedor->tamInfo);
-            		}
-            		aux = aux->prox;
-        		}
-        		
-        		
-        	}
+            if(ptrVendedor != NULL) {
+                NoLDDE * temp = listaOfertas->inicioLista;
+
+                while(temp != NULL) {
+                    if(strcmp(nomeNode(ptrVendedor), nomeNode(temp)) == 0){
+                        if(quantidadeNode(ptrVendedor) > 0) {
+                            pthread_mutex_lock(&lock);
+                            printf("Em %s\n", args->nomeArq);
+                            printf("    Tentando comprar %s\n\n", nomeNode(ptrVendedor));
+                            pthread_mutex_unlock(&lock);
+                        }
+                    }
+                    temp = temp->prox;
+                }
+                ptrVendedor = ptrVendedor->prox;
+            }
     	}
-      
-        
-       
-	   
-   
-    	destroi(&lista);
+    	destroi(&listaOfertas);
     }else{
     	printf("errro ao criar lista\n");
     }
-	
 
 	pthread_exit(NULL);
 }
-	 
 
- 
-int main(int argc, char** argv)
-{
-	int qtdthreads; //Quantidade de threads
-	
-	struct argumentos_struct args;
+
+
+int main(int argc, char** argv) {
+	int qtdThreads; //Quantidade de threads
 	int i;
-	vendedor = NULL;
-	
+    if(pthread_mutex_init(&lock, NULL) != 0) {
+        fprintf(stderr, "Erro na criação do Mutex, amigo se chegou aqui você é um campeão");
+        exit(EXIT_FAILURE);
+    }
 
-
-	//Argumentos passados pela linha de comando	 
-    qtdthreads = atoi(argv[1]); 
-    int tamArq = strlen(argv[2]);
-    threadsOcupadas = qtdthreads;
-    pthread_t cor[qtdthreads];
-	
-	for(i=0; i<tamArq; i++){
-		
-		args.nomeArq[i] = argv[2][i];
-		
-	}
-	args.nomeArq[tamArq]= '\0';
-	
-	//Inicializa struct
-	args.tamnomeArq = tamArq;
-	args.qtdthreads = qtdthreads;
-
+	//Argumentos passados pela linha de comando
+    qtdThreads = atoi(argv[1]);
+    threadsOcupadas = qtdThreads;
+    pthread_t threadCorretor[qtdThreads];
 
 	//Cria threads corretores
-	for(i = 0; i<qtdthreads; i++){
-		args.qtdthreads = qtdthreads-i;
-		 pthread_create(&cor[i], NULL, corretor, (void *)&args); 
+	for(i = 0; i < qtdThreads; i++){
+        char nomeArq[20];
+        snprintf(nomeArq, sizeof(nomeArq), "%s-%d", argv[2], i+1);
+        argThread * args = newArgThread(i, nomeArq);
+		pthread_create(&threadCorretor[i], NULL, corretor, (void *) args);
+    }
 
-	}
-    
-	char nomeArq[args.tamnomeArq+1]; //Nome do arquivo
-	FILE *ptr;
-	//Abre o arquivo para vendas
-	snprintf(nomeArq, sizeof(nomeArq), "%s", args.nomeArq);
-	ptr = fopen(nomeArq,"r");
-	if( cria(&vendedor, sizeof(info)) == 1) {     
-        printf("lista para vendas criada\n");
-        info *reg, x;
-        reg = &x;
+    char * arquivoCorretor = argv[2];
+	FILE * ptr = fopen("prgA","r");
+    vendedor = listaCriar(sizeof(info));
+	if(vendedor != NULL) {
+        //printf("lista para vendas criada\n");
         //Percorre o arquivo
         if(ptr){
-        	printf("arquivo vendas abriu\n");
-        	while( (fscanf(ptr,"%s %d\n", reg->nome, &reg->quantidade))!=EOF ){
+        	info * reg = (info *) malloc(sizeof(reg));
+            //fflush(stdout);
+        	while((fscanf(ptr,"%s %d\n", reg->nome, &reg->quantidade)) != EOF){
+                //fflush(stdout);
+                //printf("%s %d\n", reg->nome, reg->quantidade);
         		if(reg->nome[0] == '#'){
-        			printf("dorme\n");
+        			//printf("dorme\n");
         		}else{
-        			insereNoFim(vendedor,reg);
-        			printf("inseriu\n");
+                    //printf("Main\n Inseriu: %s %d\n\n", reg->nome, reg->quantidade);
+                    listaInserir(vendedor, reg);
+                    printf("Inserindo: %s %d\n\n", nomeNode(vendedor->fimLista), quantidadeNode(vendedor->fimLista));
+                    //usleep(1000);
+                    //printf("%s %d", reg->nome, *reg->quantidade);
+        			//printf("inseriu\n");
         		}
-				//printf("%s %d\n", reg->nome, reg->quantidade);
-				//Insere na lista cada oferta
-				
         	}
-        
         	fclose(ptr);
         }
-       
-	   
-   
-   
-    }else{
-    	printf("errro ao criar lista\n");
     }
-    NoLDDE *aux;
-    info *reg, x;
-    reg = &x;
-    sleep(10);
-  
-    if(vendedor->lista!= NULL){
-        
-        aux = vendedor->lista;
-         while(aux->prox!=NULL) {
-            
-            memcpy(reg, aux->dados, vendedor->tamInfo);
-           
-            printf("%s%d\n", reg->nome,reg->quantidade);
-            aux = aux->prox;
-        }
 
-    }
-	for(i = 0; i<qtdthreads; i++){
-		
-		 pthread_join(cor[i], NULL);
-
-     	 
-
+    for(i = 0; i<qtdThreads; i++){
+		 pthread_join(threadCorretor[i], NULL);
 	}
+
 	destroi(&vendedor);
     return 0;
 }
