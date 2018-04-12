@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <string.h>
 #include "source/lista.h"
+#include "source/utils.h"
 
 #define MIN(a,b) ((a) < (b) ? a : b)
 #define TAMNOMEMAX 100
@@ -16,6 +17,7 @@ pthread_mutex_t lock;
 //Estrutura da oferta de compra e venda
 typedef struct {
     int  quantidade;
+    int regQuantidade;
     char nome[30];
 } info;
 
@@ -46,7 +48,6 @@ LDDE * vendedor;
     - ponteiro da lista de ofertas do comprador
     - nome do produto que esta a venda
     - quantidade disponivel para venda
-
 */
 
 int quantidadeNode(NoLDDE * tmpNo) {
@@ -121,8 +122,11 @@ void *corretor(void *argumentos){
 
         FILE *ptr = fopen(args->nomeArq, "r");
         if(ptr){
-        	while((fscanf(ptr,"%s %d\n", reg->nome, &reg->quantidade)) != EOF)
+        	while((fscanf(ptr,"%s %d\n", reg->nome, &reg->quantidade)) != EOF){
+        		reg->regQuantidade = reg->quantidade;
 				listaInserir(listaOfertas, reg);
+        	}
+        		
         	fclose(ptr);
         }
         //local de disputa pela variavel thread ocupadas
@@ -138,11 +142,12 @@ void *corretor(void *argumentos){
 
         while(1){
             NoLDDE *ptrVendedor = vendedor->inicioLista;
-            sleep(1);
-            if(ptrVendedor != NULL) {
+            
+            while(ptrVendedor != NULL) {
                 ptrOferta = listaOfertas->inicioLista;
 
                 while(ptrOferta != NULL) {
+                	
                     if(strcmp(nomeNode(ptrVendedor), nomeNode(ptrOferta)) == 0) {
                         pthread_mutex_lock(&lock);
                         if(quantidadeNode(ptrVendedor) > 0 && quantidadeNode(ptrOferta) > 0) {
@@ -153,10 +158,10 @@ void *corretor(void *argumentos){
                             (*(info *)ptrOferta->dados).quantidade   -= qtdCompra;
                             printf("%d %d\n\n", (*(info *)ptrVendedor->dados).quantidade, (*(info *)ptrOferta->dados).quantidade);
 
-                            if((*(info *)ptrVendedor->dados).quantidade == 0) {
-                                ptrVendedor = ptrVendedor->prox;
+                           // if((*(info *)ptrVendedor->dados).quantidade == 0) {
+                             //   ptrVendedor = ptrVendedor->prox;
                                 //ptrVendedor = vendedor->inicioLista;
-                            }
+                            //}
                         }
                         pthread_mutex_unlock(&lock);
                     }
@@ -173,6 +178,25 @@ void *corretor(void *argumentos){
 	pthread_exit(NULL);
 }
 
+void imprimirPort(LDDE *lista){
+	NoLDDE * temp1 = lista->inicioLista;
+	NoLDDE * temp2 = lista->inicioLista;
+	int demanda = 0;
+	int compra = 0;
+
+	while(temp1!=NULL){
+		temp1 = temp1->prox;
+		temp2 = lista->inicioLista;
+		demanda = (*(info *)temp2->dados).regQuantidade;
+		while(temp2!=NULL){	
+			if((strcmp(nomeNode(temp1), nomeNode(temp2)) == 0)){
+				compra +=  demanda - (*(info *)temp2->dados).quantidade;
+			}		
+			temp2 = temp2->prox;
+		}
+		printf("print aqui nome, demanda, compra\n", );
+	}
+}
 
 
 int main(int argc, char** argv) {
@@ -217,7 +241,7 @@ int main(int argc, char** argv) {
                 //fflush(stdout);
                 //printf("%s %d\n", reg->nome, reg->quantidade);
         		if(reg->nome[0] == '#'){
-        			//printf("dorme\n");
+        			msleep(reg->quantidade);
         		}else{
                     listaInserir(vendedor, reg);
                     printf("Inserindo: %s %d\n", nomeNode(vendedor->fimLista), quantidadeNode(vendedor->fimLista));
