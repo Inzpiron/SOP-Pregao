@@ -10,8 +10,8 @@
 
 #define MIN(a,b) ((a) < (b) ? a : b)
 #define TAMNOMEMAX 100
-#define QTD_MUTEX 3
-#define QTD_BARRIERS 2
+#define QTD_MUTEX 2
+#define QTD_BARRIERS 1
 
 //Inicialização das variáveis de controle
 FILE * output;
@@ -39,6 +39,12 @@ struct argumentos_struct {
 };
 typedef struct argumentos_struct argThread;
 
+struct retorno_thread_struct {
+    int nroThread;
+    NoLDDE * ptrOferta;
+};
+typedef struct retorno_thread_struct retThread;
+
 argThread * newArgThread(int nroThread, char * nomeArq) {
     argThread * aux;
     aux = (argThread *) malloc(sizeof(argThread));
@@ -47,6 +53,7 @@ argThread * newArgThread(int nroThread, char * nomeArq) {
 
     aux -> nomeArq    = malloc(sizeof(char) * strlen(nomeArq));
     memcpy(aux->nomeArq, nomeArq, sizeof(char) * strlen(nomeArq));
+
     return aux;
 }
 //fim
@@ -70,7 +77,7 @@ int quantidadeCompra(NoLDDE * ptrVendedor, NoLDDE * ptrOferta) {
     return MIN(qtdVenda, qtdCompra);
 }
 
-void * corretor(void *argumentos){
+void * corretor(void * argumentos){
 	LDDE * listaOfertas = listaCriar(sizeof(info));
     int quantidadeComprada;
 	argThread * args = (argThread *) argumentos;
@@ -93,18 +100,15 @@ void * corretor(void *argumentos){
         printf("[%s] leu arquivo\n", args->nomeArq);
         NoLDDE * temp = listaOfertas->inicioLista;
         pthread_mutex_unlock(&lock[0]);
+        pthread_barrier_wait(&barreira[0]);
 
         //local de verificar ofertas de vendas e realizar a compra
         NoLDDE *ptrOferta;
         NoLDDE *ptrVendedor;
         //Thread Espera vendedor popular lista
-        while(1) {
-            ptrVendedor = vendedor->inicioLista;
-            if(ptrVendedor != NULL) break;
-        }
-        printf("[%s] PtrVendedor deixou de ser NULL\n", args->nomeArq);
-        pthread_barrier_wait(&barreira[0]);
+        ptrVendedor = vendedor->inicioLista;
 
+        int cont = 0;
         while(1) {
             ptrOferta = listaOfertas->inicioLista;
             while(ptrOferta != NULL) {
@@ -122,41 +126,24 @@ void * corretor(void *argumentos){
             }
 
             if(ptrVendedor == vendedor->fimLista && exitFlag) {
-                //ponteiro chegou ao fim da lista e não há mais itens para serem inseridos
-                //Barreira[1] faz com que as threads comecem a impimir só quando
-                //a main terminou de inserir itens na lista vendedor
-                pthread_barrier_wait(&barreira[1]);
-
-                //lock[2] faz com que seja printado apenas a informação de uma
-                //Thread por vez.
-                pthread_mutex_lock(&lock[2]);
-                printf("[%s] ptrVendedor chegou ao fim\n", args->nomeArq);
-                ptrOferta = listaOfertas->inicioLista;
-                fprintf(output, "Thread %d - Portofólio de itens\n", *args->nroThread);
-                fprintf(output, "Item               Quantidade  Demanda\n");
-                while(ptrOferta != NULL) {
-                    fprintf(output, fmtport, nomeNode(ptrOferta), quantidadeNode(ptrOferta), quaantidadeInicialNode(ptrOferta));
-                    ptrOferta = ptrOferta->prox;
-                }
-                fprintf(output, "\n");
-
-                pthread_mutex_unlock(&lock[2]);
-                pthread_exit(NULL);
+                printf("[%s] Ponteiro chegou ao fim da lista\n", args->nomeArq);
+                retThread * ret = (retThread *) malloc(sizeof(retThread));
+                ret->nroThread = *(args->nroThread);
+                ret->ptrOferta = listaOfertas->inicioLista;
+                pthread_exit(ret);
             } else if(ptrVendedor == vendedor->fimLista && !exitFlag)
                 //ponteiro cheogu ao fim da lista e ainda há itens a serem
                 //inseridos, ele só continua esperando
                 continue;
             else {
                 //ponteiro não chegou ao fim da lista então ele pode avançar
+                cont++;
                 ptrVendedor = ptrVendedor->prox;
             }
         }
-    	destroi(&listaOfertas);
     }else{
     	printf("errro ao criar lista\n");
     }
-
-	pthread_exit(NULL);
 }
 
 void imprimirPort(LDDE *lista){
@@ -182,6 +169,7 @@ void imprimirPort(LDDE *lista){
 
 int main(int argc, char** argv) {
     system("tput reset");
+    printf("[ Main ] Inicio do programa\n");
     exitFlag = 0;
 	int qtdThreads; //Quantidade de threads
 	int i;
@@ -199,8 +187,7 @@ int main(int argc, char** argv) {
     qtdThreads = atoi(argv[1]);
     threadsOcupadas = qtdThreads;
     pthread_t threadCorretor[qtdThreads];
-    pthread_barrier_init(&barreira[0], NULL, qtdThreads);
-    pthread_barrier_init(&barreira[1], NULL, qtdThreads+1);
+    pthread_barrier_init(&barreira[0], NULL, qtdThreads+1);
 
 	//Cria threads corretores
 	for(i = 0; i < qtdThreads; i++){
@@ -210,14 +197,10 @@ int main(int argc, char** argv) {
 		pthread_create(&threadCorretor[i], NULL, corretor, (void *) args);
     }
 
-    while(1) {
-        if(threadsOcupadas == 0)
-            break;
-    }
+    //Barreira espera que todas as threads inicializem, para assim a main possa
+    //começar a popular a lista de vendas
 
-    printf("[ Main ] Todos os arquivos foram lidos\n");
-    printf("[ Main ] Vai começar a putaria!\n");
-
+    int check = 0;
 	FILE * ptr = fopen(argv[2],"r");
 	if(vendedor != NULL) {
         if(ptr){
@@ -225,10 +208,14 @@ int main(int argc, char** argv) {
         	while((fscanf(ptr,"%s %d\n", reg->nome, &reg->quantidade)) != EOF){
         		if(reg->nome[0] == '#'){
         			//usleep(reg->quantidade*1000);
-                    sleep(1);
+                    msleep(reg->quantidade);
         		}else{
                     reg->regQuantidade = reg->quantidade;
                     listaInserir(vendedor, reg);
+                    if(check == 0) {
+                        pthread_barrier_wait(&barreira[0]);
+                        check = 1;
+                    }
                     printf("[ Main ] Inserindo: %s %d\n", nomeNode(vendedor->fimLista), quantidadeNode(vendedor->fimLista));
         		}
         	}
@@ -239,27 +226,50 @@ int main(int argc, char** argv) {
     exitFlag = 1;
     printf("[ Main ] Fim inserção lista vendedor\n");
 
-    //Barreira[1] espera todas as threads chegarem ao fim, assim temos o controle
-    //e o momento em que todas já terminaram de fazer manipulações na lista vendedor
-    //MOTIVO: Nem todas as threads podem estar apontando para o fim da lista quando
-    //a main já tiver parado de popula-la. Então botei essa barreira pra ter certeza
-    //que todas já estão no fim para poder printar o conteudo.
-    pthread_barrier_wait(&barreira[1]);
+    //Imprime o conteúdo de cada thread
+    for(i = 0; i < qtdThreads; i++){
+        void * retornoThread;
+        retThread ret;
+		pthread_join(threadCorretor[i], &retornoThread);
+        ret = *((retThread *) retornoThread);
 
-    for(i = 0; i<qtdThreads; i++){
-		pthread_join(threadCorretor[i], NULL);
+        if(ret.ptrOferta != NULL) {
+            fprintf(output, "Thread %d - Portofólio de itens\n", ret.nroThread+1);
+            fprintf(output, "Item               Quantidade  Demanda\n");
+            while(ret.ptrOferta != NULL) {
+                fprintf(output, fmtport, nomeNode(ret.ptrOferta), quantidadeNode(ret.ptrOferta), quaantidadeInicialNode(ret.ptrOferta));
+                ret.ptrOferta = ret.ptrOferta->prox;
+            }
+            fprintf(output, "\n");
+        } else {
+            printf("Pthread retornou NULL\n");
+            exit(EXIT_FAILURE);
+        }
 	}
 
     //Após as threads terminarem é a vez da main escrever no arquivo output
     NoLDDE * ptrLista = vendedor->inicioLista;
     fprintf(output, "Saldo de itens:\n");
     fprintf(output, "Item               Quantidade  Ofertado\n");
-    while(ptrLista != NULL) {
-        fprintf(output, fmtsaldo, nomeNode(ptrLista), quantidadeNode(ptrLista), quaantidadeInicialNode(ptrLista));
+    char * _nome;
+    int _quantidade = 0;
+    int _ofertado   = 0;
+    while(1) {
+        _nome        = nomeNode(ptrLista);
+        _quantidade += quantidadeNode(ptrLista);
+        _ofertado   += quaantidadeInicialNode(ptrLista);
+        if(ptrLista->prox == NULL || strcmp(nomeNode(ptrLista->prox), _nome) != 0) {
+            fprintf(output, fmtsaldo, _nome, _quantidade, _ofertado);
+            _quantidade = 0;
+            _ofertado   = 0;
+        }
+
         ptrLista = ptrLista->prox;
+        if(ptrLista == NULL)
+            break;
     }
 
-    printf("[ main ] fim\n");
+    printf("[ Main ] fim\n");
 	destroi(&vendedor);
     fclose(output);
     return 0;
