@@ -62,7 +62,7 @@ int quantidadeNode(NoLDDE * tmpNo) {
     return (*(info *)tmpNo->dados).quantidade;
 }
 
-int quaantidadeInicialNode(NoLDDE * tmpNo) {
+int quantidadeInicialNode(NoLDDE * tmpNo) {
     return (*(info *)tmpNo->dados).regQuantidade;
 }
 
@@ -234,10 +234,12 @@ int main(int argc, char** argv) {
         ret = *((retThread *) retornoThread);
 
         if(ret.ptrOferta != NULL) {
-            fprintf(output, "Thread %d - Portofólio de itens\n", ret.nroThread+1);
+            fprintf(output, "Thread %d - Portfolio de itens\n", ret.nroThread+1);
             fprintf(output, "Item               Quantidade  Demanda\n");
             while(ret.ptrOferta != NULL) {
-                fprintf(output, fmtport, nomeNode(ret.ptrOferta), quantidadeNode(ret.ptrOferta), quaantidadeInicialNode(ret.ptrOferta));
+                fprintf(output, fmtport, nomeNode(ret.ptrOferta),
+                                         quantidadeInicialNode(ret.ptrOferta) - quantidadeNode(ret.ptrOferta),
+                                         quantidadeInicialNode(ret.ptrOferta));
                 ret.ptrOferta = ret.ptrOferta->prox;
             }
             fprintf(output, "\n");
@@ -257,7 +259,7 @@ int main(int argc, char** argv) {
     while(1) {
         _nome        = nomeNode(ptrLista);
         _quantidade += quantidadeNode(ptrLista);
-        _ofertado   += quaantidadeInicialNode(ptrLista);
+        _ofertado   += quantidadeInicialNode(ptrLista);
         if(ptrLista->prox == NULL || strcmp(nomeNode(ptrLista->prox), _nome) != 0) {
             fprintf(output, fmtsaldo, _nome, _quantidade, _ofertado);
             _quantidade = 0;
