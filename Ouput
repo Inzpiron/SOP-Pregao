@@ -1,0 +1,32 @@
+Thread 3 - Portofólio de itens
+Item               Quantidade  Demanda
+  foo                       0       15
+  bar                      51       51
+
+Thread 2 - Portofólio de itens
+Item               Quantidade  Demanda
+  foo                       0       15
+  bar                      51       51
+
+Thread 1 - Portofólio de itens
+Item               Quantidade  Demanda
+  foo                      10       15
+  bar                      51       51
+
+Thread 0 - Portofólio de itens
+Item               Quantidade  Demanda
+  foo                      35      100
+  bar                      51       51
+
+Saldo de itens:
+Item               Quantidade  Ofertado
+  foo                       0        10
+  foo                       0        10
+  foo                       0        10
+  foo                       0        10
+  foo                       0        10
+  foo                       0        10
+  foo                       0        10
+  foo                       0        10
+  foo                       0        10
+  foo                       0        10
