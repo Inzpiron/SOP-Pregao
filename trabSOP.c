@@ -9,13 +9,14 @@
 
 #define MIN(a,b) ((a) < (b) ? a : b)
 #define TAMNOMEMAX 100
-#define QTD_MUTEX 2
+#define QTD_MUTEX 3
+#define QTD_BARRIERS 2
 
 int exitFlag;
 int threadsOcupadas;
 pthread_mutex_t lock[QTD_MUTEX];
 //Barreira0 trava as threads em uma determinada região até que todas apotem para o primeiro elemento da lista vendedor
-pthread_barrier_t barreira0;
+pthread_barrier_t barreira[QTD_BARRIERS];
 
 //Estrutura da oferta de compra e venda
 typedef struct {
@@ -74,7 +75,6 @@ void * corretor(void *argumentos){
         		reg->regQuantidade = reg->quantidade;
 				listaInserir(listaOfertas, reg);
         	}
-
         	fclose(ptr);
         }
         //local de disputa pela variavel thread ocupadas
@@ -85,7 +85,6 @@ void * corretor(void *argumentos){
         pthread_mutex_unlock(&lock[0]);
 
         //local de verificar ofertas de vendas e realizar a compra
-        //Codigo apenas para testes
         NoLDDE *ptrOferta;
         NoLDDE *ptrVendedor;
         //Thread Espera vendedor popular lista
@@ -94,7 +93,7 @@ void * corretor(void *argumentos){
             if(ptrVendedor != NULL) break;
         }
         printf("[%s] PtrVendedor deixou de ser NULL\n", args->nomeArq);
-        pthread_barrier_wait(&barreira0);      
+        pthread_barrier_wait(&barreira[0]);
 
         while(1) {
             ptrOferta = listaOfertas->inicioLista;
@@ -112,8 +111,14 @@ void * corretor(void *argumentos){
                 ptrOferta = ptrOferta->prox;
             }
 
-            if(ptrVendedor == vendedor->fimLista && exitFlag) { 
+            if(ptrVendedor == vendedor->fimLista && exitFlag) {
                 //ponteiro chegou ao fim da lista e não há mais itens para serem inseridos
+                //Barreira[1] faz com que as threads comecem a impimir só quando
+                //a main terminou de inserir itens na lista vendedor
+                pthread_barrier_wait(&barreira[1]);
+
+                //lock[2] faz com que seja printado apenas a informação de uma
+                //Thread por vez.
                 pthread_mutex_lock(&lock[2]);
                 printf("[%s] ptrVendedor chegou ao fim\n", args->nomeArq);
                 ptrOferta = listaOfertas->inicioLista;
@@ -123,10 +128,11 @@ void * corretor(void *argumentos){
                 }
                 pthread_mutex_unlock(&lock[2]);
                 pthread_exit(NULL);
-            } else if(ptrVendedor == vendedor->fimLista && !exitFlag) 
-                //ponteiro cheogu ao fim da lista e ainda há itens a serem inseridos, ele só continua esperando
+            } else if(ptrVendedor == vendedor->fimLista && !exitFlag)
+                //ponteiro cheogu ao fim da lista e ainda há itens a serem
+                //inseridos, ele só continua esperando
                 continue;
-            else { 
+            else {
                 //ponteiro não chegou ao fim da lista então ele pode avançar
                 ptrVendedor = ptrVendedor->prox;
             }
@@ -172,13 +178,14 @@ int main(int argc, char** argv) {
             fprintf(stderr, "Erro na criação do Mutex, amigo se chegou aqui você é um campeão");
             exit(EXIT_FAILURE);
         }
-    }   
+    }
 
 	//Argumentos passados pela linha de comando
     qtdThreads = atoi(argv[1]);
     threadsOcupadas = qtdThreads;
     pthread_t threadCorretor[qtdThreads];
-    pthread_barrier_init(&barreira0, NULL, qtdThreads);
+    pthread_barrier_init(&barreira[0], NULL, qtdThreads);
+    pthread_barrier_init(&barreira[1], NULL, qtdThreads+1);
 
 	//Cria threads corretores
 	for(i = 0; i < qtdThreads; i++){
@@ -211,8 +218,15 @@ int main(int argc, char** argv) {
         	fclose(ptr);
         }
     }
-    printf("[ Main ] Fim inserção lista vendedor\n");
     exitFlag = 1;
+    printf("[ Main ] Fim inserção lista vendedor\n");
+    //Barreira[1] espera todas as threads chegarem ao fim, assim temos o controle
+    //e o momento em que todas já terminaram de fazer manipulações na lista vendedor
+    //MOTIVO: Nem todas as threads podem estar apontando para o fim da lista quando
+    //a main já tiver parado de popula-la. Então botei essa barreira pra ter certeza
+    //que todas já estão no fim para poder printar o conteudo.
+    pthread_barrier_wait(&barreira[1]);
+
 
     for(i = 0; i<qtdThreads; i++){
 		pthread_join(threadCorretor[i], NULL);
