@@ -146,27 +146,6 @@ void * corretor(void * argumentos){
     }
 }
 
-void imprimirPort(LDDE *lista){
-	NoLDDE * temp1 = lista->inicioLista;
-	NoLDDE * temp2 = lista->inicioLista;
-	int demanda = 0;
-	int compra = 0;
-
-	while(temp1!=NULL){
-		temp1 = temp1->prox;
-		temp2 = lista->inicioLista;
-		demanda = (*(info *)temp2->dados).regQuantidade;
-		while(temp2!=NULL){
-			if((strcmp(nomeNode(temp1), nomeNode(temp2)) == 0)){
-				compra +=  demanda - (*(info *)temp2->dados).quantidade;
-			}
-			temp2 = temp2->prox;
-		}
-		//printf("print aqui nome, demanda, compra\n", );
-	}
-}
-
-
 int main(int argc, char** argv) {
     system("tput reset");
     printf("[ Main ] Inicio do programa\n");
