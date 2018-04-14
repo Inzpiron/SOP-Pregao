@@ -11,15 +11,18 @@
 #define MIN(a,b) ((a) < (b) ? a : b)
 #define TAMNOMEMAX 100
 #define QTD_MUTEX 2
-#define QTD_BARRIERS 1
+#define QTD_BARRIERS 2
+
+
 
 //Inicialização das variáveis de controle
 FILE * output;
 int exitFlag;
-int threadsOcupadas;
+int tamNomeArquivo = 0;
 char * nomeArquivo;
 LDDE * vendedor;
-pthread_mutex_t lock[QTD_MUTEX];
+pthread_mutex_t lock;
+
 //Barreira0 trava as threads em uma determinada região até que todas apotem para o primeiro elemento da lista vendedor
 pthread_barrier_t barreira[QTD_BARRIERS];
 //fim
@@ -58,24 +61,53 @@ argThread * newArgThread(int nroThread, char * nomeArq) {
 }
 //fim
 
+/*
+    quantidadeNode
+    retorna a quantidade em nó
+
+*/
 int quantidadeNode(NoLDDE * tmpNo) {
     return (*(info *)tmpNo->dados).quantidade;
 }
 
+/*
+    quantidadeInicialNode
+    retorna a quantidade inicial em nó
+
+*/
 int quantidadeInicialNode(NoLDDE * tmpNo) {
     return (*(info *)tmpNo->dados).regQuantidade;
 }
 
+/*
+    nomeNode
+    retorna nome do nó
+
+*/
 char * nomeNode(NoLDDE * tmpNo) {
     return (*(info *)tmpNo->dados).nome;
 }
 
+/*
+    quantidadeCompra
+    retorna a quantidade adquirida 
+
+*/
 int quantidadeCompra(NoLDDE * ptrVendedor, NoLDDE * ptrOferta) {
     int qtdVenda  = quantidadeNode(ptrVendedor);
     int qtdCompra = quantidadeNode(ptrOferta);
 
     return MIN(qtdVenda, qtdCompra);
 }
+
+/*
+    corretor
+    Cria uma lista com ofertas de compra
+    Consulta ofertas de vendas 
+    Faz compra dentros dos limites de oferta e demanda
+
+
+*/
 
 void * corretor(void * argumentos){
 	LDDE * listaOfertas = listaCriar(sizeof(info));
@@ -85,7 +117,6 @@ void * corretor(void * argumentos){
 	if(listaOfertas != NULL) {
         //Leitura do arquivo do corretor
         info *reg = (info *) malloc(sizeof(reg));
-
         FILE *ptr = fopen(args->nomeArq, "r");
         if(ptr){
         	while((fscanf(ptr,"%s %d\n", reg->nome, &reg->quantidade)) != EOF){
@@ -94,39 +125,40 @@ void * corretor(void * argumentos){
         	}
         	fclose(ptr);
         }
-        //local de disputa pela variavel thread ocupadas
-        pthread_mutex_lock(&lock[0]);
-        threadsOcupadas = threadsOcupadas-1;
-        printf("[%s] leu arquivo\n", args->nomeArq);
+       
         NoLDDE * temp = listaOfertas->inicioLista;
-        pthread_mutex_unlock(&lock[0]);
+        
+        //Barreira espera todos os corretores terminarem de lerem seus arquivos
         pthread_barrier_wait(&barreira[0]);
 
-        //local de verificar ofertas de vendas e realizar a compra
+        
         NoLDDE *ptrOferta;
         NoLDDE *ptrVendedor;
-        //Thread Espera vendedor popular lista
+        
+        //Barreira espera o vendedor colocar algo na lista
+        pthread_barrier_wait(&barreira[1]);
         ptrVendedor = vendedor->inicioLista;
 
+
         int cont = 0;
+        //Corretor verifica disponibilidade e faz a compra
         while(1) {
             ptrOferta = listaOfertas->inicioLista;
             while(ptrOferta != NULL) {
                 if(strcmp(nomeNode(ptrVendedor), nomeNode(ptrOferta)) == 0) {
-                    pthread_mutex_lock(&lock[1]);
+                    pthread_mutex_lock(&lock);
                     if(quantidadeNode(ptrVendedor) > 0 && quantidadeNode(ptrOferta) > 0) {
                         int qtdCompra = quantidadeCompra(ptrVendedor, ptrOferta);
-                        printf("[%s] Comprando %d de %s\n", args->nomeArq, qtdCompra, nomeNode(ptrVendedor));
                         (*(info *)ptrVendedor->dados).quantidade -= qtdCompra;
                         (*(info *)ptrOferta->dados).quantidade   -= qtdCompra;
                     }
-                    pthread_mutex_unlock(&lock[1]);
+                    pthread_mutex_unlock(&lock);
                 }
                 ptrOferta = ptrOferta->prox;
             }
 
             if(ptrVendedor == vendedor->fimLista && exitFlag) {
-                printf("[%s] Ponteiro chegou ao fim da lista\n", args->nomeArq);
+               
                 retThread * ret = (retThread *) malloc(sizeof(retThread));
                 ret->nroThread = *(args->nroThread);
                 ret->ptrOferta = listaOfertas->inicioLista;
@@ -142,31 +174,28 @@ void * corretor(void * argumentos){
             }
         }
     }else{
-    	printf("errro ao criar lista\n");
+    	printf("erro ao criar lista\n");
     }
 }
 
 int main(int argc, char** argv) {
     system("tput reset");
-    printf("[ Main ] Inicio do programa\n");
     exitFlag = 0;
 	int qtdThreads; //Quantidade de threads
 	int i;
     output = fopen("Ouput", "wa");
     vendedor = listaCriar(sizeof(info));
-
-    for(i = 0; i < QTD_MUTEX; i++) {
-        if(pthread_mutex_init(&lock[i], NULL) != 0) {
+    
+    if(pthread_mutex_init(&lock, NULL) != 0) {
             fprintf(stderr, "Erro na criação do Mutex, amigo se chegou aqui você é um campeão");
             exit(EXIT_FAILURE);
         }
-    }
-
+    
 	//Argumentos passados pela linha de comando
     qtdThreads = atoi(argv[1]);
-    threadsOcupadas = qtdThreads;
     pthread_t threadCorretor[qtdThreads];
     pthread_barrier_init(&barreira[0], NULL, qtdThreads+1);
+    pthread_barrier_init(&barreira[1], NULL, qtdThreads+1);
 
 	//Cria threads corretores
 	for(i = 0; i < qtdThreads; i++){
@@ -178,24 +207,25 @@ int main(int argc, char** argv) {
 
     //Barreira espera que todas as threads inicializem, para assim a main possa
     //começar a popular a lista de vendas
-
+    pthread_barrier_wait(&barreira[0]);
     int check = 0;
+    //Vendedor insere ofertas
 	FILE * ptr = fopen(argv[2],"r");
 	if(vendedor != NULL) {
         if(ptr){
         	info * reg = (info *) malloc(sizeof(reg));
         	while((fscanf(ptr,"%s %d\n", reg->nome, &reg->quantidade)) != EOF){
         		if(reg->nome[0] == '#'){
-        			//usleep(reg->quantidade*1000);
                     msleep(reg->quantidade);
         		}else{
                     reg->regQuantidade = reg->quantidade;
                     listaInserir(vendedor, reg);
                     if(check == 0) {
-                        pthread_barrier_wait(&barreira[0]);
+                        pthread_barrier_wait(&barreira[1]);
                         check = 1;
                     }
-                    printf("[ Main ] Inserindo: %s %d\n", nomeNode(vendedor->fimLista), quantidadeNode(vendedor->fimLista));
+                        
+                    
         		}
         	}
         	fclose(ptr);
@@ -203,9 +233,9 @@ int main(int argc, char** argv) {
     }
 
     exitFlag = 1;
-    printf("[ Main ] Fim inserção lista vendedor\n");
+    
 
-    //Imprime o conteúdo de cada thread
+    //Imprime o conteúdo de cada thread em um arquivo Out
     for(i = 0; i < qtdThreads; i++){
         void * retornoThread;
         retThread ret;
@@ -249,8 +279,9 @@ int main(int argc, char** argv) {
         if(ptrLista == NULL)
             break;
     }
-
-    printf("[ Main ] fim\n");
+    pthread_barrier_destroy(&barreira[0]);
+    pthread_barrier_destroy(&barreira[1]);
+    pthread_mutex_destroy(&lock);
 	destroi(&vendedor);
     fclose(output);
     return 0;
