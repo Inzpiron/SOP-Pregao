@@ -3,7 +3,12 @@
 #include <string.h>
 #include <pthread.h>
 #include <time.h>
-#include "lista.h"
+#include <unistd.h>
+#include <string.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 
 //Criar lista
 LDDE * listaCriar(unsigned long tamInfo) {

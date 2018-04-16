@@ -225,7 +225,6 @@ int main(int argc, char** argv) {
 
 void * corretor(void * argumentos){
 	LDDE * listaOfertas = listaCriar(sizeof(info));
-    int quantidadeComprada;
 	argThread * args = (argThread *) argumentos;
 
 	if(listaOfertas != NULL) {
@@ -239,8 +238,6 @@ void * corretor(void * argumentos){
         	}
         	fclose(ptr);
         }
-
-        NoLDDE * temp = listaOfertas->inicioLista;
 
         //Barreira espera todos os corretores terminarem de lerem seus arquivos
         printf("[%s] Leu arquivo\n", args->nomeArq);
@@ -292,6 +289,8 @@ void * corretor(void * argumentos){
     }else{
     	printf("erro ao criar lista\n");
     }
+
+    return NULL;
 }
 
 int quantidadeCompra(NoLDDE * ptrVendedor, NoLDDE * ptrOferta) {
@@ -314,6 +313,9 @@ int quantidadeNode(NoLDDE * tmpNo) {
 }
 
 int checkEntry(int argc, char ** argv) {
+    if(argc == 1)
+        exitError(strdup("[ Main ] Não há argumentos suficientes"));
+
     if(strcmp(argv[1], "help") == 0 || strcmp(argv[1], "Help") == 0) {
         printf("Necessário uso de 2 argumentos\n");
         printf("Arg1 = quantidade de threads\n");
@@ -322,7 +324,7 @@ int checkEntry(int argc, char ** argv) {
     }
 
     if(argc != 3)
-        exitError("[ Main ] Entrada inválida\n");
+        exitError(strdup("[ Main ] Entrada inválida\n"));
 
     int qtdt = atoi(argv[1]);
 
@@ -342,6 +344,8 @@ int checkEntry(int argc, char ** argv) {
             exitError(msgErro);
         }
     }
+
+    return 0;
 }
 
 void exitError(char * msg) {
@@ -358,10 +362,10 @@ int file_exist (char *filename) {
 argThread * newArgThread(int nroThread, char * nomeArq) {
     argThread * aux;
     aux = (argThread *) malloc(sizeof(argThread));
-    aux -> nroThread  = (int *) malloc(sizeof(int));
-    *(aux -> nroThread)  = nroThread;
+    aux->nroThread  = (int *) malloc(sizeof(int));
+    *(aux->nroThread)  = nroThread;
 
-    aux -> nomeArq    = malloc(sizeof(char) * strlen(nomeArq));
+    aux->nomeArq    = (char *) malloc(sizeof(char) * strlen(nomeArq));
     memcpy(aux->nomeArq, nomeArq, sizeof(char) * strlen(nomeArq));
 
     return aux;
