@@ -260,7 +260,7 @@ void * corretor(void * argumentos){
                         if(quantidadeNode(*ptrVendedor) > 0 && quantidadeNode(ptrOferta) > 0) {
                             int qtdCompra = quantidadeCompra(*ptrVendedor, ptrOferta);
                             (*(info *)((*ptrVendedor)->dados)).quantidade -= qtdCompra;
-                            (*(info *)ptrOferta->dados).quantidade   -= qtdCompra;
+                            (*(info *)ptrOferta->dados).quantidade        -= qtdCompra;
                             printf("[%s] Comprando %d %s\n", args->nomeArq, qtdCompra, nomeNode(ptrOferta));
                         }
                         pthread_mutex_unlock(&lock);
@@ -268,18 +268,19 @@ void * corretor(void * argumentos){
                     ptrOferta = ptrOferta->prox;
                 }
 
-                if(*ptrVendedor == vendedor->fimLista && exitFlag) {
+                if(*ptrVendedor == (vendedor->fimLista) && exitFlag) {
                     retThread * ret = (retThread *) malloc(sizeof(retThread));
                     ret->nroThread = *(args->nroThread);
                     ret->ptrOferta = listaOfertas->inicioLista;
                     printf("[%s] Chegou ao fim\n", args->nomeArq);
                     sched_yield();
                     pthread_exit(ret);
-                } else if(*ptrVendedor == vendedor->fimLista && !exitFlag)
+                } else if(*ptrVendedor == vendedor->fimLista && !exitFlag) {
                     //ponteiro cheogu ao fim da lista e ainda há itens a serem
                     //inseridos, ele só continua esperando
+                    //printf("[%s] lol\n", args->nomeArq);
                     continue;
-                else {
+                } else {
                     //ponteiro não chegou ao fim da lista então ele pode avançar
                     cont++;
                     ptrVendedor = &((*ptrVendedor)->prox);

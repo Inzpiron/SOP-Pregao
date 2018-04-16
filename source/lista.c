@@ -9,6 +9,7 @@
 #include <errno.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include "lista.h"
 
 //Criar lista
 LDDE * listaCriar(unsigned long tamInfo) {
