@@ -5,15 +5,15 @@
 #include <time.h>
 #include <unistd.h>
 #include <string.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include "source/lista.h"
 #include "source/utils.h"
 
 #define MIN(a,b) ((a) < (b) ? a : b)
 #define TAMNOMEMAX 100
-#define QTD_MUTEX 2
-#define QTD_BARRIERS 2
-
-
 
 //Inicialização das variáveis de controle
 FILE * output;
@@ -22,180 +22,117 @@ int tamNomeArquivo = 0;
 char * nomeArquivo;
 LDDE * vendedor;
 pthread_mutex_t lock;
+pthread_barrier_t barrier;
 
-//Barreira0 trava as threads em uma determinada região até que todas apotem para o primeiro elemento da lista vendedor
-pthread_barrier_t barreira[QTD_BARRIERS];
-//fim
-
-//Estrutura da oferta de compra e venda
-typedef struct {
+/*------------------------------------------------------------------------------
+    info
+    Estrutura de oferta de compra e venda
+------------------------------------------------------------------------------*/
+struct info{
     unsigned int  quantidade;
     unsigned int  regQuantidade;
     char nome[30];
-} info;
-//fim
+};
+typedef struct info info;
 
-//Estrutura dos argumentos passados aos corretores
+/*------------------------------------------------------------------------------
+    argumentos_struct
+    estrutura dos argumentos passados para thread
+------------------------------------------------------------------------------*/
 struct argumentos_struct {
     int  * nroThread;
     char * nomeArq;
 };
 typedef struct argumentos_struct argThread;
 
+/*------------------------------------------------------------------------------
+    retThread
+    estrutura referente ao retorno das threads
+------------------------------------------------------------------------------*/
 struct retorno_thread_struct {
     int nroThread;
     NoLDDE * ptrOferta;
 };
 typedef struct retorno_thread_struct retThread;
 
-argThread * newArgThread(int nroThread, char * nomeArq) {
-    argThread * aux;
-    aux = (argThread *) malloc(sizeof(argThread));
-    aux -> nroThread  = (int *) malloc(sizeof(int));
-    *(aux -> nroThread)  = nroThread;
+/*------------------------------------------------------------------------------
+    argThread
+    Função que retorna ponteiro para struct do argumento passado para
+    thread
+------------------------------------------------------------------------------*/
+argThread * newArgThread(int nroThread, char * nomeArq);
 
-    aux -> nomeArq    = malloc(sizeof(char) * strlen(nomeArq));
-    memcpy(aux->nomeArq, nomeArq, sizeof(char) * strlen(nomeArq));
+/*------------------------------------------------------------------------------
+    file_exist
+    Verifica a existencia de um arquivo
+    Créditos: StackOverflow
+------------------------------------------------------------------------------*/
+int file_exist (char *filename);
 
-    return aux;
-}
-//fim
+/*------------------------------------------------------------------------------
+    exitError
+    Sair do programa com erro printando uma mensagem
+------------------------------------------------------------------------------*/
+void exitError(char * msg);
 
-/*
+/*------------------------------------------------------------------------------
+    checkEntry
+    Verifica se a entrada do usuário é válida
+------------------------------------------------------------------------------*/
+int checkEntry(int argc, char ** argv);
+
+/*------------------------------------------------------------------------------
     quantidadeNode
-    retorna a quantidade em nó
+    retorna a quantidade do nó
+------------------------------------------------------------------------------*/
+int quantidadeNode(NoLDDE * tmpNo);
 
-*/
-int quantidadeNode(NoLDDE * tmpNo) {
-    return (*(info *)tmpNo->dados).quantidade;
-}
-
-/*
+/*------------------------------------------------------------------------------
     quantidadeInicialNode
-    retorna a quantidade inicial em nó
+    retorna a quantidade inicial do nó
+------------------------------------------------------------------------------*/
+int quantidadeInicialNode(NoLDDE * tmpNo);
 
-*/
-int quantidadeInicialNode(NoLDDE * tmpNo) {
-    return (*(info *)tmpNo->dados).regQuantidade;
-}
-
-/*
+/*------------------------------------------------------------------------------
     nomeNode
     retorna nome do nó
+------------------------------------------------------------------------------*/
+char * nomeNode(NoLDDE * tmpNo);
 
-*/
-char * nomeNode(NoLDDE * tmpNo) {
-    return (*(info *)tmpNo->dados).nome;
-}
-
-/*
+/*------------------------------------------------------------------------------
     quantidadeCompra
-    retorna a quantidade adquirida 
+    retorna a quantidade que deve ser comprada, passando o nó de oferta
+    e o nó de procura (ptrVendedor)
+------------------------------------------------------------------------------*/
+int quantidadeCompra(NoLDDE * ptrVendedor, NoLDDE * ptrOferta);
 
-*/
-int quantidadeCompra(NoLDDE * ptrVendedor, NoLDDE * ptrOferta) {
-    int qtdVenda  = quantidadeNode(ptrVendedor);
-    int qtdCompra = quantidadeNode(ptrOferta);
-
-    return MIN(qtdVenda, qtdCompra);
-}
-
-/*
+/*------------------------------------------------------------------------------
     corretor
     Cria uma lista com ofertas de compra
-    Consulta ofertas de vendas 
+    Consulta ofertas de vendas
     Faz compra dentros dos limites de oferta e demanda
-
-
-*/
-
-void * corretor(void * argumentos){
-	LDDE * listaOfertas = listaCriar(sizeof(info));
-    int quantidadeComprada;
-	argThread * args = (argThread *) argumentos;
-
-	if(listaOfertas != NULL) {
-        //Leitura do arquivo do corretor
-        info *reg = (info *) malloc(sizeof(reg));
-        FILE *ptr = fopen(args->nomeArq, "r");
-        if(ptr){
-        	while((fscanf(ptr,"%s %d\n", reg->nome, &reg->quantidade)) != EOF){
-        		reg->regQuantidade = reg->quantidade;
-				listaInserir(listaOfertas, reg);
-        	}
-        	fclose(ptr);
-        }
-       
-        NoLDDE * temp = listaOfertas->inicioLista;
-        
-        //Barreira espera todos os corretores terminarem de lerem seus arquivos
-        pthread_barrier_wait(&barreira[0]);
-
-        
-        NoLDDE *ptrOferta;
-        NoLDDE *ptrVendedor;
-        
-        //Barreira espera o vendedor colocar algo na lista
-        pthread_barrier_wait(&barreira[1]);
-        ptrVendedor = vendedor->inicioLista;
-
-
-        int cont = 0;
-        //Corretor verifica disponibilidade e faz a compra
-        while(1) {
-            ptrOferta = listaOfertas->inicioLista;
-            while(ptrOferta != NULL) {
-                if(strcmp(nomeNode(ptrVendedor), nomeNode(ptrOferta)) == 0) {
-                    pthread_mutex_lock(&lock);
-                    if(quantidadeNode(ptrVendedor) > 0 && quantidadeNode(ptrOferta) > 0) {
-                        int qtdCompra = quantidadeCompra(ptrVendedor, ptrOferta);
-                        (*(info *)ptrVendedor->dados).quantidade -= qtdCompra;
-                        (*(info *)ptrOferta->dados).quantidade   -= qtdCompra;
-                    }
-                    pthread_mutex_unlock(&lock);
-                }
-                ptrOferta = ptrOferta->prox;
-            }
-
-            if(ptrVendedor == vendedor->fimLista && exitFlag) {
-               
-                retThread * ret = (retThread *) malloc(sizeof(retThread));
-                ret->nroThread = *(args->nroThread);
-                ret->ptrOferta = listaOfertas->inicioLista;
-                pthread_exit(ret);
-            } else if(ptrVendedor == vendedor->fimLista && !exitFlag)
-                //ponteiro cheogu ao fim da lista e ainda há itens a serem
-                //inseridos, ele só continua esperando
-                continue;
-            else {
-                //ponteiro não chegou ao fim da lista então ele pode avançar
-                cont++;
-                ptrVendedor = ptrVendedor->prox;
-            }
-        }
-    }else{
-    	printf("erro ao criar lista\n");
-    }
-}
+------------------------------------------------------------------------------*/
+void * corretor(void * argumentos);
 
 int main(int argc, char** argv) {
+    checkEntry(argc, argv);
     system("tput reset");
+    printf("[ Main ] Entrada ok!\n");
     exitFlag = 0;
 	int qtdThreads; //Quantidade de threads
 	int i;
     output = fopen("Ouput", "wa");
     vendedor = listaCriar(sizeof(info));
-    
+
     if(pthread_mutex_init(&lock, NULL) != 0) {
             fprintf(stderr, "Erro na criação do Mutex, amigo se chegou aqui você é um campeão");
             exit(EXIT_FAILURE);
-        }
-    
+    }
+
 	//Argumentos passados pela linha de comando
     qtdThreads = atoi(argv[1]);
     pthread_t threadCorretor[qtdThreads];
-    pthread_barrier_init(&barreira[0], NULL, qtdThreads+1);
-    pthread_barrier_init(&barreira[1], NULL, qtdThreads+1);
+    pthread_barrier_init(&barrier, NULL, qtdThreads+1);
 
 	//Cria threads corretores
 	for(i = 0; i < qtdThreads; i++){
@@ -207,8 +144,8 @@ int main(int argc, char** argv) {
 
     //Barreira espera que todas as threads inicializem, para assim a main possa
     //começar a popular a lista de vendas
-    pthread_barrier_wait(&barreira[0]);
-    int check = 0;
+    pthread_barrier_wait(&barrier);
+
     //Vendedor insere ofertas
 	FILE * ptr = fopen(argv[2],"r");
 	if(vendedor != NULL) {
@@ -219,21 +156,16 @@ int main(int argc, char** argv) {
                     msleep(reg->quantidade);
         		}else{
                     reg->regQuantidade = reg->quantidade;
+                    printf("[ Main ] Inserindo %s %d\n", reg->nome, reg->quantidade);
                     listaInserir(vendedor, reg);
-                    if(check == 0) {
-                        pthread_barrier_wait(&barreira[1]);
-                        check = 1;
-                    }
-                        
-                    
         		}
         	}
         	fclose(ptr);
         }
     }
 
+    printf("[ Main ] Terminou de inserir\n");
     exitFlag = 1;
-    
 
     //Imprime o conteúdo de cada thread em um arquivo Out
     for(i = 0; i < qtdThreads; i++){
@@ -243,7 +175,7 @@ int main(int argc, char** argv) {
         ret = *((retThread *) retornoThread);
 
         if(ret.ptrOferta != NULL) {
-            fprintf(output, "Thread %d - Portfolio de itens\n", ret.nroThread+1);
+            fprintf(output, "Thread %d - Portfolio de itens:\n", ret.nroThread+1);
             fprintf(output, "Item               Quantidade  Demanda\n");
             while(ret.ptrOferta != NULL) {
                 fprintf(output, fmtport, nomeNode(ret.ptrOferta),
@@ -269,6 +201,7 @@ int main(int argc, char** argv) {
         _nome        = nomeNode(ptrLista);
         _quantidade += quantidadeNode(ptrLista);
         _ofertado   += quantidadeInicialNode(ptrLista);
+
         if(ptrLista->prox == NULL || strcmp(nomeNode(ptrLista->prox), _nome) != 0) {
             fprintf(output, fmtsaldo, _nome, _quantidade, _ofertado);
             _quantidade = 0;
@@ -279,10 +212,153 @@ int main(int argc, char** argv) {
         if(ptrLista == NULL)
             break;
     }
-    pthread_barrier_destroy(&barreira[0]);
-    pthread_barrier_destroy(&barreira[1]);
+
+    pthread_barrier_destroy(&barrier);
     pthread_mutex_destroy(&lock);
 	destroi(&vendedor);
     fclose(output);
     return 0;
+}
+
+void * corretor(void * argumentos){
+	LDDE * listaOfertas = listaCriar(sizeof(info));
+    int quantidadeComprada;
+	argThread * args = (argThread *) argumentos;
+
+	if(listaOfertas != NULL) {
+        //Leitura do arquivo do corretor
+        info *reg = (info *) malloc(sizeof(reg));
+        FILE *ptr = fopen(args->nomeArq, "r");
+        if(ptr){
+        	while((fscanf(ptr,"%s %d\n", reg->nome, &reg->quantidade)) != EOF){
+        		reg->regQuantidade = reg->quantidade;
+				listaInserir(listaOfertas, reg);
+        	}
+        	fclose(ptr);
+        }
+
+        NoLDDE * temp = listaOfertas->inicioLista;
+
+        //Barreira espera todos os corretores terminarem de lerem seus arquivos
+        printf("[%s] Leu arquivo\n", args->nomeArq);
+        pthread_barrier_wait(&barrier);
+
+        NoLDDE *  ptrOferta;
+        NoLDDE ** ptrVendedor;
+
+        //Barreira espera o vendedor colocar algo na lista
+        ptrVendedor = &(vendedor->inicioLista);
+
+        int cont = 0;
+        //Corretor verifica disponibilidade e faz a compra
+        while(1) {
+            if(*ptrVendedor != NULL) {
+                ptrOferta = listaOfertas->inicioLista;
+                while(ptrOferta != NULL) {
+                    if(strcmp(nomeNode(*ptrVendedor), nomeNode(ptrOferta)) == 0) {
+                        pthread_mutex_lock(&lock);
+                        if(quantidadeNode(*ptrVendedor) > 0 && quantidadeNode(ptrOferta) > 0) {
+                            int qtdCompra = quantidadeCompra(*ptrVendedor, ptrOferta);
+                            (*(info *)((*ptrVendedor)->dados)).quantidade -= qtdCompra;
+                            (*(info *)ptrOferta->dados).quantidade   -= qtdCompra;
+                            printf("[%s] Comprando %d %s\n", args->nomeArq, qtdCompra, nomeNode(ptrOferta));
+                        }
+                        pthread_mutex_unlock(&lock);
+                    }
+                    ptrOferta = ptrOferta->prox;
+                }
+
+                if(*ptrVendedor == vendedor->fimLista && exitFlag) {
+                    retThread * ret = (retThread *) malloc(sizeof(retThread));
+                    ret->nroThread = *(args->nroThread);
+                    ret->ptrOferta = listaOfertas->inicioLista;
+                    printf("[%s] Chegou ao fim\n", args->nomeArq);
+                    pthread_exit(ret);
+                } else if(*ptrVendedor == vendedor->fimLista && !exitFlag)
+                    //ponteiro cheogu ao fim da lista e ainda há itens a serem
+                    //inseridos, ele só continua esperando
+                    continue;
+                else {
+                    //ponteiro não chegou ao fim da lista então ele pode avançar
+                    cont++;
+                    ptrVendedor = &((*ptrVendedor)->prox);
+                }
+            }
+        }
+    }else{
+    	printf("erro ao criar lista\n");
+    }
+}
+
+int quantidadeCompra(NoLDDE * ptrVendedor, NoLDDE * ptrOferta) {
+    int qtdVenda  = quantidadeNode(ptrVendedor);
+    int qtdCompra = quantidadeNode(ptrOferta);
+
+    return MIN(qtdVenda, qtdCompra);
+}
+
+char * nomeNode(NoLDDE * tmpNo) {
+    return (*(info *)tmpNo->dados).nome;
+}
+
+int quantidadeInicialNode(NoLDDE * tmpNo) {
+    return (*(info *)tmpNo->dados).regQuantidade;
+}
+
+int quantidadeNode(NoLDDE * tmpNo) {
+    return (*(info *)tmpNo->dados).quantidade;
+}
+
+int checkEntry(int argc, char ** argv) {
+    if(strcmp(argv[1], "help") == 0 || strcmp(argv[1], "Help") == 0) {
+        printf("Necessário uso de 2 argumentos\n");
+        printf("Arg1 = quantidade de threads\n");
+        printf("Arg2 = nome do arquivo de leitura\n");
+        exit(EXIT_SUCCESS);
+    }
+
+    if(argc != 3)
+        exitError("[ Main ] Entrada inválida\n");
+
+    int qtdt = atoi(argv[1]);
+
+    if(!file_exist(argv[2])) {
+        char msgErro[100];
+        snprintf(msgErro, sizeof(msgErro), "[ Main ] Arquivo não encontrado (%s)", argv[2]);
+        exitError(msgErro);
+    }
+
+    int i;
+    for(i = 0; i < qtdt; i++) {
+        char nomeArq[20];
+        snprintf(nomeArq, sizeof(nomeArq), "%s-%d", argv[2], i+1);
+        if(!file_exist(nomeArq)) {
+            char  msgErro[100];
+            snprintf(msgErro, sizeof(msgErro), "[ Main ] Arquivo não encontrado (%s)", nomeArq);
+            exitError(msgErro);
+        }
+    }
+}
+
+void exitError(char * msg) {
+    printf("[ ERRO ]%s\n", msg);
+    printf("[ ERRO ] 'Help' para informações\n");
+    exit(EXIT_FAILURE);
+}
+
+int file_exist (char *filename) {
+  struct stat   buffer;
+  return (stat (filename, &buffer) == 0);
+}
+
+argThread * newArgThread(int nroThread, char * nomeArq) {
+    argThread * aux;
+    aux = (argThread *) malloc(sizeof(argThread));
+    aux -> nroThread  = (int *) malloc(sizeof(int));
+    *(aux -> nroThread)  = nroThread;
+
+    aux -> nomeArq    = malloc(sizeof(char) * strlen(nomeArq));
+    memcpy(aux->nomeArq, nomeArq, sizeof(char) * strlen(nomeArq));
+
+    return aux;
 }
