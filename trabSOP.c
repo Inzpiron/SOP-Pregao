@@ -101,8 +101,8 @@ char * nomeNode(NoLDDE * tmpNo);
 
 /*------------------------------------------------------------------------------
     quantidadeCompra
-    retorna a quantidade que deve ser comprada, passando o nó de oferta
-    e o nó de procura (ptrVendedor)
+    retorna a quantidade que deve ser comprada, passando o nó do vendedor
+    e o nó da oferta por meio de ponteiros de lista
 ------------------------------------------------------------------------------*/
 int quantidadeCompra(NoLDDE * ptrVendedor, NoLDDE * ptrOferta);
 
@@ -114,6 +114,9 @@ int quantidadeCompra(NoLDDE * ptrVendedor, NoLDDE * ptrOferta);
 ------------------------------------------------------------------------------*/
 void * corretor(void * argumentos);
 
+/*------------------------------------------------------------------------------
+    main
+------------------------------------------------------------------------------*/
 int main(int argc, char** argv) {
     checkEntry(argc, argv);
     system("tput reset");
@@ -273,6 +276,7 @@ void * corretor(void * argumentos){
                     ret->nroThread = *(args->nroThread);
                     ret->ptrOferta = listaOfertas->inicioLista;
                     printf("[%s] Chegou ao fim\n", args->nomeArq);
+                    sched_yield();
                     pthread_exit(ret);
                 } else if(*ptrVendedor == vendedor->fimLista && !exitFlag)
                     //ponteiro cheogu ao fim da lista e ainda há itens a serem
